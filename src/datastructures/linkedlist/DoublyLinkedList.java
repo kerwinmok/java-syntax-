@@ -293,9 +293,9 @@ public class DoublyLinkedList {
             } else {
                 if (map.size() == capacity) {
                     // Evict the least recently used (just before tail)
-                    Node<K, V> lru = tail.prev;
-                    removeNode(lru);
-                    map.remove(lru.key);
+                    Node<K, V> lruNode = tail.prev;
+                    removeNode(lruNode);
+                    map.remove(lruNode.key);
                 }
                 Node<K, V> newNode = new Node<>(key, value);
                 addToFront(newNode);

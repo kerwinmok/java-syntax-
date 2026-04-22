@@ -100,10 +100,10 @@ public class SearchAlgorithms {
             return dist;
         }
 
-        // Reconstruct path from shortestPath result
+        // Reconstruct path from shortestPath result - O(n) using LinkedList.addFirst
         public static List<Integer> getPath(int[] prev, int end) {
-            List<Integer> path = new ArrayList<>();
-            for (int v = end; v != -1; v = prev[v]) path.add(0, v);
+            LinkedList<Integer> path = new LinkedList<>();
+            for (int v = end; v != -1; v = prev[v]) path.addFirst(v);
             return path;
         }
 

@@ -207,22 +207,24 @@ public class OOPConcepts {
 
     // A class can implement multiple interfaces
     static class DrawableCircle extends Circle implements Drawable, Resizable {
-        private double radius;
+        // NOTE: radius is inherited from Circle via the `area()` calculation.
+        // We store it here explicitly because Circle.radius is private.
+        private double drawRadius;
 
         public DrawableCircle(double radius) {
             super("red", radius);
-            this.radius = radius;
+            this.drawRadius = radius;
         }
 
         @Override
         public void draw() {
-            System.out.println("Drawing circle with radius " + radius);
+            System.out.println("Drawing circle with radius " + drawRadius);
         }
 
         @Override
         public void resize(double factor) {
-            radius *= factor;
-            System.out.println("Resized to radius " + radius);
+            drawRadius *= factor;
+            System.out.println("Resized to radius " + drawRadius);
         }
     }
 

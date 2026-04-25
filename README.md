@@ -36,7 +36,7 @@ src/
 **Practice app (new):**
 ```bash
 mkdir -p out
-javac -d out src/Launch.java
+javac -d out src/*.java
 java -cp out Launch
 ```
 

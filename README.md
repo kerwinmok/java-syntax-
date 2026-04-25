@@ -33,6 +33,15 @@ src/
 
 ## 🚀 How to Run
 
+**Practice app (new):**
+```bash
+mkdir -p out
+javac -d out src/Launch.java
+java -cp out Launch
+```
+
+This app gives topic-based questions, checks your output, and then shows a step-by-step optimal solution.
+
 **Compile everything:**
 ```bash
 mkdir -p out

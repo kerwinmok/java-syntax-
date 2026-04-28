@@ -1,223 +1,429 @@
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 public class Launch {
-    private static final String END_SENTINEL = "END";
-    private static final String RESET = "\u001B[0m";
-    private static final String INK = "\u001B[38;2;18;20;22m";
-    private static final String MUTED = "\u001B[38;2;93;98;105m";
-    private static final String ACCENT = "\u001B[38;2;28;54;90m";
+    private static final Color BG = new Color(245, 245, 239);
+    private static final Color SURFACE = new Color(250, 250, 247);
+    private static final Color INK = new Color(18, 20, 22);
+    private static final Color MUTED = new Color(93, 98, 105);
+    private static final Color ACCENT = new Color(28, 54, 90);
 
-    private final Scanner scanner = new Scanner(System.in);
     private final Map<String, List<Question>> questionBank = QuestionBank.build();
     private final Map<String, Lesson> lessons = buildLessons();
 
+    private JFrame frame;
+    private CardLayout contentCards;
+    private JPanel contentPanel;
+
+    private JList<String> walkthroughTopicList;
+    private JTextArea walkthroughSummary;
+    private JTextArea walkthroughCode;
+    private JTextArea walkthroughOutput;
+
+    private JList<String> practiceTopicList;
+    private JLabel questionMeta;
+    private JTextArea questionPrompt;
+    private JTextArea expectedOutput;
+    private JTextArea solutionSteps;
+    private JTextArea optimalCode;
+    private JTextField answerField;
+    private JLabel resultLabel;
+
+    private List<Question> activeQuestions = new ArrayList<>();
+    private int questionIndex = 0;
+    private int score = 0;
+
     public static void main(String[] args) {
-        new Launch().run();
+        SwingUtilities.invokeLater(() -> {
+            Launch app = new Launch();
+            app.buildUi();
+            app.frame.setVisible(true);
+        });
     }
 
-    private void run() {
-        printHero();
-        while (true) {
-            printMainMenu();
-            String input = scanner.nextLine().trim();
+    private void buildUi() {
+        setLookAndFeel();
 
-            if ("1".equals(input)) {
-                runGuidedSyntaxWalkthrough();
-            } else if ("2".equals(input)) {
-                runTopicPractice();
-            } else if ("3".equals(input)) {
-                runMixedDrill();
-            } else if ("4".equals(input)) {
-                printlnAccent("see you next session.");
-                return;
-            } else {
-                printlnMuted("invalid option. choose 1 to 4.");
-            }
-        }
+        frame = new JFrame("java syntax trainer");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(new Dimension(1120, 760));
+        frame.setLocationRelativeTo(null);
+
+        JPanel root = new JPanel(new BorderLayout());
+        root.setBackground(BG);
+        root.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        root.add(buildHeader(), BorderLayout.NORTH);
+        root.add(buildMain(), BorderLayout.CENTER);
+
+        frame.setContentPane(root);
     }
 
-    private void runGuidedSyntaxWalkthrough() {
+    private JPanel buildHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        header.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
+
+        JLabel title = new JLabel("java syntax trainer");
+        title.setForeground(INK);
+        title.setFont(new Font("Serif", Font.PLAIN, 34));
+
+        JLabel subtitle = new JLabel("guided walkthrough + questions + examples");
+        subtitle.setForeground(MUTED);
+        subtitle.setFont(new Font("SansSerif", Font.PLAIN, 14));
+
+        JPanel left = new JPanel();
+        left.setOpaque(false);
+        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        left.add(title);
+        left.add(Box.createVerticalStrut(3));
+        left.add(subtitle);
+
+        header.add(left, BorderLayout.WEST);
+        return header;
+    }
+
+    private JSplitPane buildMain() {
+        JPanel nav = new JPanel();
+        nav.setLayout(new BoxLayout(nav, BoxLayout.Y_AXIS));
+        nav.setBackground(SURFACE);
+        nav.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(220, 220, 212)),
+            BorderFactory.createEmptyBorder(14, 12, 14, 12)
+        ));
+
+        JButton walkthroughBtn = createNavButton("walkthrough");
+        walkthroughBtn.addActionListener(e -> showCard("walkthrough"));
+
+        JButton topicPracticeBtn = createNavButton("practice by topic");
+        topicPracticeBtn.addActionListener(e -> showCard("practice"));
+
+        JButton mixedBtn = createNavButton("mixed drill");
+        mixedBtn.addActionListener(e -> startMixedDrill());
+
+        JButton resetBtn = createNavButton("reset session");
+        resetBtn.addActionListener(e -> resetPracticeUi());
+
+        nav.add(walkthroughBtn);
+        nav.add(Box.createVerticalStrut(10));
+        nav.add(topicPracticeBtn);
+        nav.add(Box.createVerticalStrut(10));
+        nav.add(mixedBtn);
+        nav.add(Box.createVerticalStrut(10));
+        nav.add(resetBtn);
+        nav.add(Box.createVerticalGlue());
+
+        contentCards = new CardLayout();
+        contentPanel = new JPanel(contentCards);
+        contentPanel.setOpaque(false);
+        contentPanel.add(buildWalkthroughCard(), "walkthrough");
+        contentPanel.add(buildPracticeCard(), "practice");
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, nav, contentPanel);
+        split.setDividerLocation(230);
+        split.setBorder(null);
+        split.setBackground(BG);
+        return split;
+    }
+
+    private JPanel buildWalkthroughCard() {
+        JPanel panel = new JPanel(new BorderLayout(12, 0));
+        panel.setBackground(BG);
+
         List<String> topics = new ArrayList<>(lessons.keySet());
-        while (true) {
-            printSectionHeader("guided syntax walkthrough");
-            for (int i = 0; i < topics.size(); i++) {
-                System.out.printf("%s%d%s) %s%n", ACCENT, i + 1, RESET, topics.get(i));
+        walkthroughTopicList = new JList<>(topics.toArray(new String[0]));
+        walkthroughTopicList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        walkthroughTopicList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateWalkthroughTopic();
             }
-            System.out.printf("%s%d%s) run all topics%n", ACCENT, topics.size() + 1, RESET);
-            System.out.printf("%s%d%s) back%n", ACCENT, topics.size() + 2, RESET);
-            System.out.print("choose: ");
+        });
 
-            int choice = parseChoice(scanner.nextLine().trim());
-            if (choice == topics.size() + 2) {
-                return;
-            }
-            if (choice == topics.size() + 1) {
-                for (String topic : topics) {
-                    showLesson(topic, lessons.get(topic));
-                }
-                continue;
-            }
-            if (choice < 1 || choice > topics.size()) {
-                printlnMuted("out of range.");
-                continue;
-            }
+        JScrollPane leftScroll = new JScrollPane(walkthroughTopicList);
+        leftScroll.setPreferredSize(new Dimension(240, 0));
 
-            String topic = topics.get(choice - 1);
-            showLesson(topic, lessons.get(topic));
+        JPanel detail = new JPanel();
+        detail.setLayout(new BoxLayout(detail, BoxLayout.Y_AXIS));
+        detail.setBackground(SURFACE);
+        detail.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(220, 220, 212)),
+            BorderFactory.createEmptyBorder(14, 14, 14, 14)
+        ));
+
+        walkthroughSummary = createReadArea(4);
+        walkthroughCode = createReadArea(10);
+        walkthroughOutput = createReadArea(3);
+
+        detail.add(sectionLabel("summary"));
+        detail.add(walkthroughSummary);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("example"));
+        detail.add(walkthroughCode);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("expected output"));
+        detail.add(walkthroughOutput);
+
+        panel.add(leftScroll, BorderLayout.WEST);
+        panel.add(detail, BorderLayout.CENTER);
+
+        if (!topics.isEmpty()) {
+            walkthroughTopicList.setSelectedIndex(0);
         }
+        return panel;
     }
 
-    private void showLesson(String topic, Lesson lesson) {
-        printSectionHeader(topic.toLowerCase());
-        printlnMuted(lesson.summary);
-        System.out.println();
-        printlnAccent("example");
-        System.out.println(lesson.exampleCode);
-        System.out.println();
-        printlnAccent("expected output");
-        System.out.println(lesson.expectedOutput);
-        System.out.println();
-        printlnMuted("press enter to continue...");
-        scanner.nextLine();
-    }
+    private JPanel buildPracticeCard() {
+        JPanel panel = new JPanel(new BorderLayout(12, 0));
+        panel.setBackground(BG);
 
-    private void runTopicPractice() {
         List<String> topics = new ArrayList<>(questionBank.keySet());
-        while (true) {
-            printSectionHeader("question practice by topic");
-            for (int i = 0; i < topics.size(); i++) {
-                String topic = topics.get(i);
-                int count = questionBank.get(topic).size();
-                System.out.printf("%s%d%s) %s (%d)%n", ACCENT, i + 1, RESET, topic, count);
+        practiceTopicList = new JList<>(topics.toArray(new String[0]));
+        practiceTopicList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        practiceTopicList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                String topic = practiceTopicList.getSelectedValue();
+                if (topic != null) {
+                    startTopicPractice(topic);
+                }
             }
-            System.out.printf("%s%d%s) back%n", ACCENT, topics.size() + 1, RESET);
-            System.out.print("choose: ");
+        });
 
-            int choice = parseChoice(scanner.nextLine().trim());
-            if (choice == topics.size() + 1) {
-                return;
-            }
-            if (choice < 1 || choice > topics.size()) {
-                printlnMuted("out of range.");
-                continue;
-            }
+        JScrollPane leftScroll = new JScrollPane(practiceTopicList);
+        leftScroll.setPreferredSize(new Dimension(240, 0));
 
-            String selected = topics.get(choice - 1);
-            runQuestions(questionBank.get(selected), selected);
-        }
+        JPanel detail = new JPanel();
+        detail.setLayout(new BoxLayout(detail, BoxLayout.Y_AXIS));
+        detail.setBackground(SURFACE);
+        detail.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(220, 220, 212)),
+            BorderFactory.createEmptyBorder(14, 14, 14, 14)
+        ));
+
+        questionMeta = new JLabel("select a topic to begin");
+        questionMeta.setForeground(ACCENT);
+        questionMeta.setFont(new Font("SansSerif", Font.BOLD, 13));
+
+        questionPrompt = createReadArea(8);
+        answerField = new JTextField();
+        expectedOutput = createReadArea(3);
+        solutionSteps = createReadArea(7);
+        optimalCode = createReadArea(7);
+        resultLabel = new JLabel(" ");
+        resultLabel.setForeground(MUTED);
+
+        JButton checkBtn = new JButton("check answer");
+        checkBtn.addActionListener(e -> checkCurrentAnswer());
+
+        JButton nextBtn = new JButton("next question");
+        nextBtn.addActionListener(e -> nextQuestion());
+
+        JPanel controls = new JPanel(new BorderLayout(8, 0));
+        controls.setOpaque(false);
+        controls.add(checkBtn, BorderLayout.WEST);
+        controls.add(nextBtn, BorderLayout.CENTER);
+
+        detail.add(questionMeta);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("question"));
+        detail.add(questionPrompt);
+        detail.add(Box.createVerticalStrut(6));
+        detail.add(sectionLabel("your output"));
+        detail.add(answerField);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(controls);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(resultLabel);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("expected output"));
+        detail.add(expectedOutput);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("step-by-step solution"));
+        detail.add(solutionSteps);
+        detail.add(Box.createVerticalStrut(8));
+        detail.add(sectionLabel("reference implementation"));
+        detail.add(optimalCode);
+
+        panel.add(leftScroll, BorderLayout.WEST);
+        panel.add(detail, BorderLayout.CENTER);
+
+        return panel;
     }
 
-    private void runMixedDrill() {
-        List<Question> all = new ArrayList<>();
-        for (List<Question> questions : questionBank.values()) {
-            all.addAll(questions);
+    private void updateWalkthroughTopic() {
+        String topic = walkthroughTopicList.getSelectedValue();
+        if (topic == null) {
+            return;
         }
-        runQuestions(all, "mixed drill");
+
+        Lesson lesson = lessons.get(topic);
+        walkthroughSummary.setText(lesson.summary);
+        walkthroughCode.setText(lesson.exampleCode);
+        walkthroughOutput.setText(lesson.expectedOutput);
     }
 
-    private void runQuestions(List<Question> questions, String label) {
-        int correct = 0;
-        printSectionHeader(label);
-        printlnMuted("type output exactly. for multiline answers, type lines then END.");
-
-        for (int i = 0; i < questions.size(); i++) {
-            Question q = questions.get(i);
-            System.out.println();
-            System.out.printf("%squestion %d/%d%s%n", ACCENT, i + 1, questions.size(), RESET);
-            System.out.printf("%stopic:%s %s%n", MUTED, RESET, q.getTopic());
-            System.out.printf("%stitle:%s %s%n%n", MUTED, RESET, q.getTitle());
-            System.out.println(q.getPrompt());
-            System.out.println();
-            System.out.println("your output (finish with END):");
-
-            String userOutput = readMultiLineAnswer();
-            boolean isCorrect = normalize(userOutput).equals(normalize(q.getExpectedOutput()));
-            if (isCorrect) {
-                correct++;
-                System.out.printf("%sresult:%s correct%n", ACCENT, RESET);
-            } else {
-                System.out.printf("%sresult:%s incorrect%n", ACCENT, RESET);
-                printlnMuted("expected output:");
-                System.out.println(q.getExpectedOutput());
-            }
-
-            System.out.println();
-            printlnAccent("step-by-step solution");
-            for (int step = 0; step < q.getSolutionSteps().size(); step++) {
-                System.out.printf("%d) %s%n", step + 1, q.getSolutionSteps().get(step));
-            }
-
-            if (!q.getOptimalCode().isEmpty()) {
-                System.out.println();
-                printlnAccent("reference implementation");
-                System.out.println(q.getOptimalCode());
-            }
-
-            System.out.println();
-            printlnMuted("press enter for next...");
-            scanner.nextLine();
-        }
-
-        System.out.println();
-        System.out.printf("%sscore%s %d/%d (%.1f%%)%n", INK, RESET, correct, questions.size(),
-            questions.isEmpty() ? 0.0 : (100.0 * correct) / questions.size());
+    private void startTopicPractice(String topic) {
+        activeQuestions = new ArrayList<>(questionBank.get(topic));
+        questionIndex = 0;
+        score = 0;
+        loadQuestion();
     }
 
-    private String readMultiLineAnswer() {
-        List<String> lines = new ArrayList<>();
-        while (true) {
-            String line = scanner.nextLine();
-            if (END_SENTINEL.equals(line)) {
-                break;
-            }
-            lines.add(line);
+    private void startMixedDrill() {
+        showCard("practice");
+        activeQuestions = new ArrayList<>();
+        for (List<Question> list : questionBank.values()) {
+            activeQuestions.addAll(list);
         }
-        return String.join("\n", lines);
+        questionIndex = 0;
+        score = 0;
+        loadQuestion();
     }
 
-    private int parseChoice(String input) {
-        try {
-            return Integer.parseInt(input);
-        } catch (NumberFormatException ex) {
-            return -1;
+    private void loadQuestion() {
+        if (activeQuestions.isEmpty()) {
+            questionMeta.setText("no questions found");
+            clearQuestionFields();
+            return;
         }
+
+        if (questionIndex >= activeQuestions.size()) {
+            double pct = (100.0 * score) / activeQuestions.size();
+            JOptionPane.showMessageDialog(
+                frame,
+                String.format("session complete\nscore: %d/%d (%.1f%%)", score, activeQuestions.size(), pct),
+                "complete",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            questionIndex = 0;
+            score = 0;
+        }
+
+        Question q = activeQuestions.get(questionIndex);
+        questionMeta.setText(String.format("%s | question %d/%d", q.getTopic(), questionIndex + 1, activeQuestions.size()));
+        questionPrompt.setText(q.getPrompt());
+        expectedOutput.setText("");
+        solutionSteps.setText("");
+        optimalCode.setText("");
+        answerField.setText("");
+        resultLabel.setText(" ");
+    }
+
+    private void checkCurrentAnswer() {
+        if (activeQuestions.isEmpty()) {
+            return;
+        }
+
+        Question q = activeQuestions.get(questionIndex);
+        String userAnswer = normalize(answerField.getText());
+        String expected = normalize(q.getExpectedOutput());
+        boolean correct = expected.equals(userAnswer);
+
+        if (correct) {
+            score++;
+            resultLabel.setForeground(new Color(18, 120, 56));
+            resultLabel.setText("correct");
+        } else {
+            resultLabel.setForeground(new Color(140, 38, 38));
+            resultLabel.setText("incorrect");
+        }
+
+        expectedOutput.setText(q.getExpectedOutput());
+        solutionSteps.setText(String.join("\n", q.getSolutionSteps()));
+        optimalCode.setText(q.getOptimalCode());
+    }
+
+    private void nextQuestion() {
+        if (activeQuestions.isEmpty()) {
+            return;
+        }
+        questionIndex++;
+        loadQuestion();
+    }
+
+    private void resetPracticeUi() {
+        activeQuestions = new ArrayList<>();
+        questionIndex = 0;
+        score = 0;
+        questionMeta.setText("select a topic to begin");
+        clearQuestionFields();
+    }
+
+    private void clearQuestionFields() {
+        questionPrompt.setText("");
+        expectedOutput.setText("");
+        solutionSteps.setText("");
+        optimalCode.setText("");
+        answerField.setText("");
+        resultLabel.setText(" ");
+    }
+
+    private void showCard(String name) {
+        contentCards.show(contentPanel, name);
+    }
+
+    private JTextArea createReadArea(int rows) {
+        JTextArea area = new JTextArea(rows, 30);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setBackground(new Color(247, 247, 242));
+        area.setForeground(INK);
+        area.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(223, 223, 216)),
+            BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        ));
+        return area;
+    }
+
+    private JLabel sectionLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(ACCENT);
+        label.setFont(new Font("SansSerif", Font.BOLD, 12));
+        return label;
+    }
+
+    private JButton createNavButton(String label) {
+        JButton button = new JButton(label);
+        button.setFocusPainted(false);
+        button.setBackground(new Color(241, 241, 236));
+        button.setForeground(INK);
+        button.setBorder(BorderFactory.createLineBorder(new Color(222, 222, 215)));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        return button;
     }
 
     private String normalize(String value) {
         return value.replace("\r\n", "\n").trim();
     }
 
-    private void printHero() {
-        System.out.println(ACCENT + "============================================================" + RESET);
-        System.out.println(INK + " java syntax trainer | clean terminal ui" + RESET);
-        System.out.println(MUTED + " inspired by your website tone: lowercase, clean, practical" + RESET);
-        System.out.println(ACCENT + "============================================================" + RESET);
-    }
-
-    private void printMainMenu() {
-        System.out.println();
-        printSectionHeader("main menu");
-        System.out.printf("%s1%s) guided syntax walkthrough%n", ACCENT, RESET);
-        System.out.printf("%s2%s) question practice by topic%n", ACCENT, RESET);
-        System.out.printf("%s3%s) mixed drill (all topics)%n", ACCENT, RESET);
-        System.out.printf("%s4%s) exit%n", ACCENT, RESET);
-        System.out.print("choose: ");
-    }
-
-    private void printSectionHeader(String label) {
-        System.out.printf("%n%s[%s]%s%n", INK, label, RESET);
-    }
-
-    private void printlnAccent(String line) {
-        System.out.println(ACCENT + line + RESET);
-    }
-
-    private void printlnMuted(String line) {
-        System.out.println(MUTED + line + RESET);
+    private void setLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {
+        }
     }
 
     private Map<String, Lesson> buildLessons() {

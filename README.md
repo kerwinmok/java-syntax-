@@ -40,7 +40,7 @@ javac -d out src/*.java
 java -cp out Launch
 ```
 
-This launcher gives a styled menu with:
+This launcher opens a desktop Swing UI with:
 - guided syntax walkthroughs
 - topic-based and mixed question drills
 - expected outputs plus step-by-step optimal solutions
